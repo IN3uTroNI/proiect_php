@@ -1,0 +1,348 @@
+
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    account_name TEXT UNIQUE NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE stats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE NOT NULL, -- 'STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'
+    name TEXT NOT NULL
+);
+
+CREATE TABLE races (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT,
+    base_speed INTEGER DEFAULT 30 NOT NULL,
+    parent_race_id INTEGER NULL,
+    FOREIGN KEY (parent_race_id) REFERENCES races(id) ON DELETE SET NULL
+);
+
+CREATE TABLE classes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    hit_die INTEGER NOT NULL, 
+    primary_ability_id INTEGER NOT NULL,
+    spellcasting_ability_id INTEGER NULL,
+    FOREIGN KEY (primary_ability_id) REFERENCES stats(id),
+    FOREIGN KEY (spellcasting_ability_id) REFERENCES stats(id)
+);
+
+CREATE TABLE class_saving_throws (
+    class_id INTEGER,
+    stat_id INTEGER,
+    PRIMARY KEY (class_id, stat_id),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (stat_id) REFERENCES stats(id) ON DELETE CASCADE
+);
+
+CREATE TABLE subclasses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    UNIQUE(id, class_id),
+    UNIQUE(class_id, name),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE skills (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    related_stat_id INTEGER NOT NULL,
+    FOREIGN KEY (related_stat_id) REFERENCES stats(id)
+);
+
+CREATE TABLE items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    item_type TEXT NOT NULL,
+    rarity TEXT DEFAULT 'Common',
+    weight REAL DEFAULT 0.00, 
+    value_gold INTEGER DEFAULT 0,
+    ac_base INTEGER NULL,
+    damage_dice TEXT NULL,
+    damage_type TEXT NULL,
+    -- SQLite alternative to ENUM:
+    CONSTRAINT chk_item_type CHECK (item_type IN ('Weapon', 'Armor', 'Shield', 'Potion', 'Ring', 'Wondrous Item', 'Gear')),
+    CONSTRAINT chk_rarity CHECK (rarity IN ('Common', 'Uncommon', 'Rare', 'Very Rare', 'Legendary', 'Artifact'))
+);
+
+CREATE TABLE item_properties_list (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL, -- 'Finesse', 'Light', 'Heavy', etc.
+    description TEXT
+);
+
+CREATE TABLE item_properties (
+    item_id INTEGER,
+    property_id INTEGER,
+    PRIMARY KEY (item_id, property_id),
+    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+    FOREIGN KEY (property_id) REFERENCES item_properties_list(id) ON DELETE CASCADE
+);
+
+CREATE TABLE equipment_slots_list (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slot_name TEXT UNIQUE NOT NULL 
+);
+
+CREATE TABLE spells (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    spell_level INTEGER NOT NULL, -- 0 for Cantrips, 1-9
+    school TEXT,
+    casting_time TEXT,
+    range_text TEXT,
+    duration_text TEXT,
+    description TEXT,
+    requires_concentration INTEGER DEFAULT 0 NOT NULL, 
+    component_v INTEGER DEFAULT 0 NOT NULL,
+    component_s INTEGER DEFAULT 0 NOT NULL,
+    component_m INTEGER DEFAULT 0 NOT NULL,
+    material_description TEXT NULL,
+    CONSTRAINT chk_bool_conc CHECK (requires_concentration IN (0,1)),
+    CONSTRAINT chk_bool_v CHECK (component_v IN (0,1)),
+    CONSTRAINT chk_bool_s CHECK (component_s IN (0,1)),
+    CONSTRAINT chk_bool_m CHECK (component_m IN (0,1))
+);
+
+CREATE TABLE features (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    feature_type TEXT NOT NULL,
+    description TEXT NOT NULL,
+    required_level INTEGER DEFAULT 1,
+    source_book TEXT DEFAULT 'Player''s Handbook',
+    CONSTRAINT chk_feature_type CHECK (feature_type IN ('Racial', 'Class', 'Subclass', 'Feat'))
+);
+
+CREATE TABLE conditions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT NOT NULL
+);
+
+CREATE TABLE class_features (
+    class_id INTEGER,
+    feature_id INTEGER,
+    level_unlocked INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (class_id, feature_id),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE
+);
+
+CREATE TABLE subclass_features (
+    subclass_id INTEGER,
+    feature_id INTEGER,
+    level_unlocked INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (subclass_id, feature_id),
+    FOREIGN KEY (subclass_id) REFERENCES subclasses(id) ON DELETE CASCADE,
+    FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE
+);
+
+CREATE TABLE race_features (
+    race_id INTEGER,
+    feature_id INTEGER,
+    PRIMARY KEY (race_id, feature_id),
+    FOREIGN KEY (race_id) REFERENCES races(id) ON DELETE CASCADE,
+    FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE
+);
+
+CREATE TABLE characters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    race_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    experience INTEGER DEFAULT 0,
+    total_level INTEGER DEFAULT 1 NOT NULL,
+    hp_current INTEGER NOT NULL,
+    hp_max INTEGER NOT NULL,
+    hp_temp INTEGER DEFAULT 0,
+    death_save_successes INTEGER DEFAULT 0,
+    death_save_failures INTEGER DEFAULT 0,
+    has_inspiration INTEGER DEFAULT 0,
+    background TEXT,
+    alignment TEXT,
+    cp INTEGER DEFAULT 0,
+    sp INTEGER DEFAULT 0,
+    ep INTEGER DEFAULT 0,
+    gp INTEGER DEFAULT 0,
+    pp INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (race_id) REFERENCES races(id),
+    CONSTRAINT chk_bool_insp CHECK (has_inspiration IN (0,1))
+);
+
+CREATE TABLE campaigns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    setting TEXT NULL,
+    campaign_notes TEXT NULL,
+    dungeon_master_user_id INTEGER,
+    FOREIGN KEY (dungeon_master_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE campaign_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL,
+    session_number INTEGER NULL,
+    log_text TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+
+CREATE TABLE campaign_characters (
+    campaign_id INTEGER,
+    character_id INTEGER,
+    PRIMARY KEY (campaign_id, character_id),
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+    FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+
+CREATE TABLE character_classes (
+    character_id INTEGER,
+    class_id INTEGER,
+    class_level INTEGER DEFAULT 1,
+    PRIMARY KEY (character_id, class_id),
+    FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id)
+);
+
+CREATE TABLE character_subclasses (
+    character_id INTEGER,
+    class_id INTEGER,
+    subclass_id INTEGER,
+    PRIMARY KEY (character_id, subclass_id),
+    UNIQUE (character_id, class_id),
+    FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE,
+    FOREIGN KEY (subclass_id, class_id) REFERENCES subclasses(id, class_id) ON DELETE CASCADE
+);
+
+CREATE TABLE character_stats (
+    character_id INTEGER,
+    stat_id INTEGER,
+    value INTEGER NOT NULL DEFAULT 10,
+    PRIMARY KEY (character_id, stat_id),
+    FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE,
+    FOREIGN KEY (stat_id) REFERENCES stats(id)
+);
+
+CREATE TABLE character_skills (
+    character_id INTEGER,
+    skill_id INTEGER,
+    proficient INTEGER DEFAULT 0,
+    expertise INTEGER DEFAULT 0,
+    PRIMARY KEY (character_id, skill_id),
+    FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE,
+    FOREIGN KEY (skill_id) REFERENCES skills(id),
+    CONSTRAINT chk_prof CHECK (proficient IN (0,1)),
+    CONSTRAINT chk_expert CHECK (expertise IN (0,1))
+);
+
+CREATE TABLE character_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    character_id INTEGER NOT NULL,
+    item_id INTEGER NOT NULL,
+    quantity INTEGER DEFAULT 1,
+    equipped INTEGER DEFAULT 0,
+    is_attuned INTEGER DEFAULT 0,
+    equipment_slot_id INTEGER NOT NULL,
+    FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE,
+    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+    FOREIGN KEY (equipment_slot_id) REFERENCES equipment_slots_list(id),
+    CONSTRAINT chk_eq CHECK (equipped IN (0,1)),
+    CONSTRAINT chk_att CHECK (is_attuned IN (0,1))
+);
+
+CREATE TABLE character_spells (
+    character_id INTEGER,
+    spell_id INTEGER,
+    prepared INTEGER DEFAULT 0,
+    source_class_id INTEGER NULL,
+    PRIMARY KEY (character_id, spell_id),
+    FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE,
+    FOREIGN KEY (spell_id) REFERENCES spells(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_class_id) REFERENCES classes(id),
+    CONSTRAINT chk_prep CHECK (prepared IN (0,1))
+);
+
+CREATE TABLE character_spell_slots (
+    character_id INTEGER,
+    slot_level INTEGER NOT NULL, 
+    slots_max INTEGER NOT NULL,
+    slots_current INTEGER NOT NULL,
+    PRIMARY KEY (character_id, slot_level),
+    FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+
+CREATE TABLE character_features (
+    character_id INTEGER,
+    feature_id INTEGER,
+    PRIMARY KEY (character_id, feature_id),
+    FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE,
+    FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE
+);
+
+CREATE TABLE character_feature_uses (
+    character_id INTEGER,
+    feature_id INTEGER,
+    uses_max INTEGER NOT NULL,
+    uses_current INTEGER NOT NULL,
+    reset_on TEXT NOT NULL,
+    PRIMARY KEY (character_id, feature_id),
+    FOREIGN KEY (character_id, feature_id) REFERENCES character_features(character_id, feature_id) ON DELETE CASCADE,
+    CONSTRAINT chk_reset CHECK (reset_on IN ('Short', 'Long', 'Other'))
+);
+
+CREATE TABLE character_conditions (
+    character_id INTEGER,
+    condition_id INTEGER,
+    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (character_id, condition_id),
+    FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE,
+    FOREIGN KEY (condition_id) REFERENCES conditions(id) ON DELETE CASCADE
+);
+
+
+CREATE TABLE rule_modifiers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id INTEGER NULL,
+    feature_id INTEGER NULL,
+    spell_id INTEGER NULL,
+    condition_id INTEGER NULL,
+    target_type TEXT NOT NULL,
+    target_identifier TEXT NULL, 
+    modifier_mode TEXT NOT NULL,
+    modifier_value INTEGER NOT NULL,
+    priority INTEGER DEFAULT 0 NOT NULL,
+    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+    FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE,
+    FOREIGN KEY (spell_id) REFERENCES spells(id) ON DELETE CASCADE,
+    FOREIGN KEY (condition_id) REFERENCES conditions(id) ON DELETE CASCADE,
+    CONSTRAINT chk_target_type CHECK (target_type IN ('Stat', 'Skill', 'AC', 'Speed', 'Saving_Throw', 'Spell_DC')),
+    CONSTRAINT chk_mod_mode CHECK (modifier_mode IN ('Add', 'Override')),
+    CONSTRAINT chk_single_source CHECK (
+        (item_id IS NOT NULL AND feature_id IS NULL AND spell_id IS NULL AND condition_id IS NULL) OR
+        (item_id IS NULL AND feature_id IS NOT NULL AND spell_id IS NULL AND condition_id IS NULL) OR
+        (item_id IS NULL AND feature_id IS NULL AND spell_id IS NOT NULL AND condition_id IS NULL) OR
+        (item_id IS NULL AND feature_id IS NULL AND spell_id IS NULL AND condition_id IS NOT NULL)
+    )
+);
+
+INSERT INTO stats(code, name) VALUES
+('STR', 'Strength'),
+('DEX', 'Dexterity'),
+('CON', 'Constitution'),
+('INT', 'Intelligence'),
+('WIS', 'Wisdom'),
+('CHA', 'Charisma');
+
+INSERT INTO equipment_slots_list(slot_name) VALUES
+('Inventory'), ('Main-Hand'), ('Off-Hand'), ('Armor'), ('Head'), ('Feet'), ('Ring_1'), ('Ring_2'), ('Cloak'), ('Neck');
